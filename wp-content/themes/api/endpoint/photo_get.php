@@ -10,7 +10,7 @@ function photo_data($post){
         'id' => $post->ID,
         'author' => $user->user_login,
         'title' => $post->post_title,
-        'date' => $post->post_data,
+        'date' => $post->post_date,
         'src' => $src,
         'peso' => $post_meta['peso'][0],
         'idade' => $post_meta['idade'][0],
@@ -29,13 +29,20 @@ function api_photo_get($request){
     }
 
     $photo = photo_data($post);
+    $photo['acessos'] = (int) $photo['acessos'] + 1;
+    update_post_meta($post->ID, 'acessos', $photo['acessos']);
 
-    // $photos = get_photos([
-    //     'post_id' => $post_id,
-    // ]);
-   
+    $comments = get_comments([
+        'post_id' => $post_id,
+        'order' => 'ASC',
+    ]);
 
-    return rest_ensure_response($photo);
+    $response = [
+        'photo' => $photo,
+        'comments' => $comments,
+    ];
+
+    return rest_ensure_response($response);
     
 }
 
@@ -46,5 +53,50 @@ function register_api_photo_get(){
     ]);
 }
 add_action('rest_api_init', 'register_api_photo_get');
+
+
+function api_photos_get($request){   
+    $_total = sanitize_text_field($request['_total']) ?: 6;
+    $_page  = sanitize_text_field($request['_page'])  ?: 1;
+    $_user  = sanitize_text_field($request['_user'])  ?: 0;
+
+    if(!is_numeric($_user)){
+        $user = get_user_by('login', $_user);
+        if(!$user){
+            $response = new WP_Error('error', 'Usuário não encontrado.', ['status' => 404]);
+            return rest_ensure_response($response);
+        }
+        $user = $user->ID;
+    }
+
+    $args = [
+        'post_type' => 'post',
+        'author' => $_user,
+        'post_per_page' => $_total,
+        'paged' => $_page,
+    ];
+
+    $query = new WP_Query($args);
+    $posts = $query->posts;
+
+    $photo = [];
+    if($posts){
+        foreach($posts as $post){
+            $photo[] = photo_data($post);
+        }
+    }
+
+
+    return rest_ensure_response($posts);
+    
+}
+
+function register_api_photos_get(){
+    register_rest_route('api', '/photo', [
+        'methods' => WP_REST_Server::READABLE,
+        'callback' => 'api_photos_get',
+    ]);
+}
+add_action('rest_api_init', 'register_api_photos_get');
 
 ?>
